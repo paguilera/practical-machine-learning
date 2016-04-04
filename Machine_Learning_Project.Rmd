@@ -1,0 +1,127 @@
+---
+  html_document:
+    highlight: pygments
+    keep_md: yes
+    theme: readable
+  author: "Patricio Aguilera"
+  date: "April 3, 2016"
+  output: html_document
+  title: "Predicting the Exercise Manner - Machine Learning Course Project"
+---
+
+Using devices such as _Jawbone Up_, _Nike FuelBand_, and _Fitbit_ it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify _how well they do it_. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# Acquiring and Examing the Original Data
+
+First we set up our libraries to make sure we can use the necessary functions.
+
+```{r echo=FALSE}
+library(AppliedPredictiveModeling)
+library(caret)
+library(elasticnet)
+library(gbm)
+```
+
+Next we check for the files to make sure we have them available for processing. If they aren't found locally, we download them.
+
+```{r echo=FALSE}
+if(!file.exists("./testData.csv")) {
+  testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(testUrl, destfile = "testData.csv")
+}
+if(!file.exists("./trainData.csv")){
+  trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(trainUrl, destfile = "trainData.csv")
+}
+```
+
+Next we read in the files.
+
+```{r echo=FALSE}
+trainingData <- read.csv("trainData.csv", na.strings = c("", "NA", "#DIV/0!"))
+testingData <- read.csv("testData.csv", na.strings = c("", "NA", "#DIV/0!"))
+```
+
+Let's take a closer look at the training data. We'll end up splitting this into training and validation data, but here's the initial look. As you can see, we have19622 observations and 160 features split across 5 different classes (A, B, C, D, E).
+
+```{r}
+dim(trainingData)
+table(trainingData$classe)
+```
+
+# Subsetting Training and Validation Datasets
+
+Now we're ready to break the original training dataset into a training and a validation set.
+
+```{r}
+trainingSet <- createDataPartition(trainingData$classe, p = 0.8, list = FALSE)
+training <- trainingData[trainingSet, ]
+validation <- trainingData[-trainingSet, ]
+```
+
+## Narrowing Down to Usable Data
+
+Our training data had a lot of NA entries. This will cause complications unless we do something at this stage prior to doing any training of the model. We'll remove near zero variance entries as well as remove columns and entries that are descriptive or null. We'll update the training dataset to remove those pieces.
+
+```{r}
+# First, determine near zero variance features
+nzvcol <- nearZeroVar(training)
+training <- training[, -nzvcol]
+
+# Next, determine which columns with m40% ore more missing values 
+# or are exclude descriptive columns like name etc
+cntlength <- sapply(training, function(x) {
+  sum(!(is.na(x) | x == ""))
+})
+nullColumns <- names(cntlength[cntlength < 0.6 * length(training$classe)])
+descriptionColumns <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", 
+                        "cvtd_timestamp", "new_window", "num_window")
+removedColumns <- c(descriptionColumns, nullColumns)
+
+# Finally, remove those columns that need to be removed
+training <- training[, !names(training) %in% removedColumns]
+```
+
+# Train on a Random Forest Model
+
+Next up, it's time to start creating and training the model. We'll use a random forest for this step. It's a good starting model and we can see what happens when we validate against it for accuracy.
+
+```{r}
+set.seed(255)
+rf.model <- suppressMessages(train(classe ~ ., data=training, method="rf", na.action = na.omit))
+```
+
+# Validate that Random Forest Model
+
+Now that we've created the model, we'll validate it first against the training set (which should be remarkably accurate) and then against the validation data we had set aside in an earlier step.
+
+## Against the Training Set
+
+First the training set validation.
+
+```{r}
+prediction.training <- predict(rf.Model, training)
+print(confusionMatrix(prediction.training, training$classe))
+```
+
+Yep, no surprises here. It was very accurate when validated against the data that was used to create the model.
+
+## Against the Validation Set
+
+Now we validate against the validation dataset.
+
+```{r}
+prediction.validation <- predict(rf.model, validation)
+print(confusionMatrix(prediction.validation, validation$classe))
+```
+
+Based on this, we are now ready to check this model against the test dataset.
+
+# Validate against the Test Data
+
+We finish out this project by now running the prediction against the testing data. The results are shown here.
+
+```{r}
+prediction.test <- predict(rf.model, testingData)
+prediction.test
+```
