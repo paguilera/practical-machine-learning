@@ -100,7 +100,7 @@ Now that we've created the model, we'll validate it first against the training s
 First the training set validation.
 
 ```{r}
-prediction.training <- predict(rf.Model, training)
+prediction.training <- predict(rf.model, training)
 print(confusionMatrix(prediction.training, training$classe))
 ```
 
